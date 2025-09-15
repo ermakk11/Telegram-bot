@@ -1,10 +1,10 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 import os
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-# --- Команда /start ---
+# /start: показать меню
 async def start(update, context):
     keyboard = [
         [
@@ -16,30 +16,32 @@ async def start(update, context):
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Привет! 👋 Выбери действие:", reply_markup=reply_markup)
 
-    await update.message.reply_text("Привет! 👋 Отправь мне фото, и я дам его File ID.\nА потом напиши /start, чтобы открыть меню.", reply_markup=reply_markup)
-
-# --- Обработка нажатий ---
+# обработка нажатий по кнопкам «О нас» / «Помощь»
 async def button_handler(update, context):
     query = update.callback_query
     await query.answer()
-
     if query.data == "about":
-        await query.edit_message_text("📢 Я бот, созданный на Python и работающий на Render 🚀")
+        await query.edit_message_text(
+            "📢 **RemPlus — сервис по ремонту техники**\n\n"
+            "🔧 Ремонт смартфонов, планшетов и ноутбуков\n"
+            "📍 Адрес: г. Нижний Тагил, ул. Циолковского, д.39\n"
+            "☎️ Телефон: +7 912 210-00-96\n"
+            "🕙 Режим работы: ежедневно с 10:00 до 19:00\n\n"
+            "Гарантия качества и честный сервис ✅"
+        )
     elif query.data == "help":
-        await query.edit_message_text("🛠 Доступные команды:\n/start — меню\n/about — о боте\n/help — помощь")
+        await query.edit_message_text(
+            "🛠 Доступные команды:\n"
+            "/start — открыть меню\n"
+            "/about — информация о сервисе\n"
+            "/help — список команд\n\n"
+            "Чтобы связаться с мастером, нажмите кнопку «Связаться» ниже ⬇️"
+        )
 
-# --- Временный обработчик для получения File ID ---
-async def get_file_id(update, context):
-    if update.message.photo:
-        file_id = update.message.photo[-1].file_id
-        await update.message.reply_text(f"File ID этого изображения:\n{file_id}")
-
-# --- Запуск ---
+# запуск приложения
 app = Application.builder().token(TOKEN).build()
-
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(button_handler))
-app.add_handler(MessageHandler(filters.PHOTO, get_file_id))  # <-- добавили сюда
-
 app.run_polling()
