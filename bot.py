@@ -18,7 +18,7 @@ from telegram.ext import (
     ContextTypes
 )
 
-# === Flask-заглушка, чтобы Render видел открытый порт ===
+# === Flask-заглушка для Render ===
 app = Flask(__name__)
 
 @app.route("/")
@@ -26,7 +26,7 @@ def home():
     return "✅ Bot is running on Render!"
 
 def run_flask():
-    port = int(os.environ.get("PORT", 10000))  # Render передает порт в переменной PORT
+    port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
 # === Загружаем справочник разъёмов ===
@@ -36,8 +36,29 @@ with open("connectors.json", encoding="utf-8") as f:
 # === Токен и настройки ===
 TOKEN = os.getenv("BOT_TOKEN")
 OWNER_LINK = "https://t.me/ermakov_remont"
-ADMIN_ID = 437753009   # твой ID, заявки будут приходить сюда
+ADMIN_ID = 437753009   # твой ID
+
+# === Контекст пользователей ===
 USER_CONTEXT = {}
+
+# === Синонимы брендов (кириллица → латиница) ===
+BRAND_SYNONYMS = {
+    "самсунг": "samsung",
+    "хуавей": "huawei",
+    "хонор": "honor",
+    "сяоми": "xiaomi",
+    "ксиаоми": "xiaomi",
+    "оппо": "oppo",
+    "текно": "tecno",
+    "текно": "tecno",
+    "инфин": "infinix",
+}
+
+def normalize_brand(text: str) -> str:
+    for ru, en in BRAND_SYNONYMS.items():
+        if ru in text.lower():
+            text = text.lower().replace(ru, en)
+    return text
 
 # === Функции ===
 def round_up_to_100(x):
@@ -59,7 +80,7 @@ def calculate_price(model: str, repair_type: str) -> str:
         return "❌ Не удалось определить модель или разъём."
 
     if repair_type == "экран":
-        total = round_up_to_100(3000)  # + цена детали (можно добавить парсер)
+        total = round_up_to_100(3000)
         return f"💡 Замена дисплея для {model}: {total} ₽ (срок 1 день)"
 
     if repair_type == "батарея":
@@ -88,7 +109,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    text = update.message.text.lower()
+    text = normalize_brand(update.message.text.lower())
 
     if "о нас" in text:
         await update.message.reply_text("👨‍🔧 РемПлюс — профессиональный ремонт смартфонов.\nТелефон: +79120412121")
@@ -103,7 +124,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Модель
     if any(b in text for b in ["iphone", "samsung", "xiaomi", "huawei", "honor", "realme", "oppo", "infinix", "tecno"]):
         if user_id not in USER_CONTEXT:
-            USER_CONTEXT[user_id] = {"model": None, "service": None}
+            USER_CONTEXT[user_id] = {"model": None, "service": None, "stage": None}
         USER_CONTEXT[user_id]["model"] = update.message.text
         if USER_CONTEXT[user_id]["service"]:
             price = calculate_price(USER_CONTEXT[user_id]["model"], USER_CONTEXT[user_id]["service"])
@@ -124,7 +145,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if service:
         if user_id not in USER_CONTEXT:
-            USER_CONTEXT[user_id] = {"model": None, "service": None}
+            USER_CONTEXT[user_id] = {"model": None, "service": None, "stage": None}
         USER_CONTEXT[user_id]["service"] = service
         if USER_CONTEXT[user_id]["model"]:
             price = calculate_price(USER_CONTEXT[user_id]["model"], USER_CONTEXT[user_id]["service"])
@@ -185,7 +206,9 @@ async def order_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await update.message.reply_text("✅ Спасибо! Ваша заявка принята, мы скоро свяжемся с вами.")
-        USER_CONTEXT[user_id] = {}
+
+        # ❗️ Сбрасываем только stage
+        USER_CONTEXT[user_id]["stage"] = None
 
 # === Запуск ===
 def main():
@@ -195,7 +218,6 @@ def main():
     app_tg.add_handler(CallbackQueryHandler(button_handler))
     app_tg.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, order_handler))
 
-    # Запускаем Flask и Telegram параллельно
     threading.Thread(target=run_flask).start()
     app_tg.run_polling()
 
