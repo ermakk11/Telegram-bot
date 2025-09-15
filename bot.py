@@ -8,7 +8,8 @@ with open("connectors.json", encoding="utf-8") as f:
     CONNECTORS = json.load(f)
 
 # === Твой токен ===
-TOKEN = "8238890929:AAG3tnUSJc4YY4xyZQJXeRNWEQPUW4rg2VM"
+import os
+TOKEN = os.getenv("BOT_TOKEN")
 OWNER_LINK = "https://t.me/ermakov_remont"
 
 # === Правила ценообразования ===
