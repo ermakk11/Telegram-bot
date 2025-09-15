@@ -1,6 +1,5 @@
 import os
-import threading
-from flask import Flask
+from flask import Flask, request
 from telegram import (
     Update,
     ReplyKeyboardMarkup,
@@ -12,26 +11,37 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
-    filters,
-    ContextTypes
+    ContextTypes,
+    filters
 )
-
-# === Flask-заглушка для Render ===
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return "✅ Bot is running on Render!"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
 
 # === Настройки ===
 TOKEN = os.getenv("BOT_TOKEN")
 OWNER_LINK = "https://t.me/ermakov_remont"
 ADMIN_ID = 437753009
 USER_CONTEXT = {}
+
+# URL твоего сервиса на Render
+# Например: https://telegram-bot-8ozy.onrender.com
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+
+# === Flask для webhook ===
+app = Flask(__name__)
+telegram_app = Application.builder().token(TOKEN).build()
+
+
+@app.route("/")
+def home():
+    return "✅ Bot is running with Webhook!"
+
+
+@app.route(f"/webhook/{TOKEN}", methods=["POST"])
+def webhook():
+    """Получение апдейтов от Telegram"""
+    update = Update.de_json(request.get_json(force=True), telegram_app.bot)
+    telegram_app.update_queue.put_nowait(update)
+    return "ok"
+
 
 # === Команда /start ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -42,6 +52,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📱 Напишите марку и модель устройства, а также проблему.",
         reply_markup=reply_markup
     )
+
 
 # === Универсальный обработчик текста ===
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -65,11 +76,18 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             phone = USER_CONTEXT[user_id].get("phone")
             problem = USER_CONTEXT[user_id].get("problem")
 
+            username = (
+                f"@{update.message.from_user.username}"
+                if update.message.from_user.username
+                else "—"
+            )
+
             card = (
                 f"🆕 <b>Новая заявка</b>\n\n"
                 f"👤 Имя: <b>{name}</b>\n"
                 f"📞 Телефон: <b>{phone}</b>\n"
-                f"📱 Проблема: <b>{problem}</b>"
+                f"📱 Проблема: <b>{problem}</b>\n"
+                f"🌐 Username: {username}"
             )
 
             keyboard = InlineKeyboardMarkup(
@@ -112,6 +130,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🛒 Записаться", callback_data="order")]])
     await update.message.reply_text(reply, reply_markup=keyboard)
 
+
 # === Inline-кнопки ===
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -121,15 +140,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         USER_CONTEXT[query.from_user.id]["stage"] = "name"
         await query.message.reply_text("✍️ Отлично! Как вас зовут?")
 
+
 # === Запуск ===
 def main():
-    app_tg = Application.builder().token(TOKEN).build()
-    app_tg.add_handler(CommandHandler("start", start))
-    app_tg.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
-    app_tg.add_handler(CallbackQueryHandler(button_handler))
+    telegram_app.add_handler(CommandHandler("start", start))
+    telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+    telegram_app.add_handler(CallbackQueryHandler(button_handler))
 
-    threading.Thread(target=run_flask).start()
-    app_tg.run_polling()
+    # Устанавливаем webhook
+    import asyncio
+    async def set_webhook():
+        await telegram_app.bot.set_webhook(f"{WEBHOOK_URL}/webhook/{TOKEN}")
+
+    asyncio.get_event_loop().run_until_complete(set_webhook())
+
 
 if __name__ == "__main__":
     main()
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
