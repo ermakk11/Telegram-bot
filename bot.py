@@ -4,7 +4,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-# /start: показать меню
+# --- Команда /start ---
 async def start(update, context):
     keyboard = [
         [
@@ -18,16 +18,16 @@ async def start(update, context):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Привет! 👋 Выбери действие:", reply_markup=reply_markup)
 
-# обработка нажатий по кнопкам «О нас» / «Помощь»
+# --- Обработка нажатий ---
 async def button_handler(update, context):
     query = update.callback_query
     await query.answer()
     if query.data == "about":
         await query.edit_message_text(
-            "📢 **RemPlus — сервис по ремонту техники**\n\n"
+            "📢 Сервис **РемПлюс**\n\n"
             "🔧 Ремонт смартфонов, планшетов и ноутбуков\n"
             "📍 Адрес: г. Нижний Тагил, ул. Циолковского, д.39\n"
-            "☎️ Телефон: +7 912 210-00-96\n"
+            "☎️ Телефон: +7 912 041 21 21\n"
             "🕙 Режим работы: ежедневно с 10:00 до 19:00\n\n"
             "Гарантия качества и честный сервис ✅"
         )
@@ -35,12 +35,13 @@ async def button_handler(update, context):
         await query.edit_message_text(
             "🛠 Доступные команды:\n"
             "/start — открыть меню\n"
-            "/about — информация о сервисе\n"
+            "/about — информация о РемПлюс\n"
             "/help — список команд\n\n"
-            "Чтобы связаться с мастером, нажмите кнопку «Связаться» ниже ⬇️"
+            "☎️ Для связи звоните: +7 912 041 21 21\n"
+            "или нажмите кнопку «Связаться» ниже ⬇️"
         )
 
-# запуск приложения
+# --- Запуск ---
 app = Application.builder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(button_handler))
