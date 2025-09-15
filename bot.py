@@ -107,11 +107,11 @@ def main():
 
     # Запускаем webhook
     application.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000)),
-        url_path=TOKEN,
-        webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
-    )
+    listen="0.0.0.0",
+    port=int(os.environ.get("PORT", 10000)),
+    url_path=TOKEN,
+    webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
+)
 
 
 if __name__ == "__main__":
