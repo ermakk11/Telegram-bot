@@ -33,7 +33,7 @@ OWNER_LINK = "https://t.me/ermakov_remont"
 ADMIN_ID = 437753009
 USER_CONTEXT = {}
 
-# === Обработчики ===
+# === Команда /start ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [["О нас", "Помощь", "Связаться"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -43,9 +43,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
+# === Обработка обычных сообщений ===
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     text = update.message.text.lower()
+
+    # Если пользователь уже в процессе заявки → игнорируем
+    if user_id in USER_CONTEXT and "stage" in USER_CONTEXT[user_id]:
+        return  
 
     # Кнопки
     if "о нас" in text:
@@ -58,7 +63,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"📞 Напишите нам: {OWNER_LINK}")
         return
 
-    # Сохраняем проблему в контекст
+    # Сохраняем проблему
     USER_CONTEXT[user_id] = {"problem": update.message.text}
 
     # Определение услуги
@@ -81,6 +86,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         USER_CONTEXT[query.from_user.id]["stage"] = "name"
         await query.message.reply_text("✍️ Отлично! Как вас зовут?")
 
+# === Обработка заявки ===
 async def order_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     text = update.message.text
@@ -100,6 +106,7 @@ async def order_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         phone = USER_CONTEXT[user_id].get("phone")
         problem = USER_CONTEXT[user_id].get("problem")
 
+        # Карточка заявки
         card = (
             f"🆕 <b>Новая заявка</b>\n\n"
             f"👤 Имя: <b>{name}</b>\n"
@@ -111,6 +118,7 @@ async def order_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [[InlineKeyboardButton("📩 Позвонить", url=f"tel:{phone}")]]
         )
 
+        # Отправляем администратору
         await context.bot.send_message(
             chat_id=ADMIN_ID, 
             text=card, 
@@ -118,7 +126,10 @@ async def order_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard
         )
 
+        # Подтверждение клиенту
         await update.message.reply_text("✅ Спасибо! Ваша заявка принята, мы скоро свяжемся с вами.")
+
+        # Очищаем контекст
         USER_CONTEXT[user_id] = {}
 
 # === Запуск ===
