@@ -1,6 +1,8 @@
 import os
 import json
 import math
+import threading
+from flask import Flask
 from telegram import (
     Update, 
     ReplyKeyboardMarkup, 
@@ -16,16 +18,25 @@ from telegram.ext import (
     ContextTypes
 )
 
+# === Flask-заглушка, чтобы Render видел открытый порт ===
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "✅ Bot is running on Render!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))  # Render передает порт в переменной PORT
+    app.run(host="0.0.0.0", port=port)
+
 # === Загружаем справочник разъёмов ===
 with open("connectors.json", encoding="utf-8") as f:
     CONNECTORS = json.load(f)
 
-# === Токен из переменной окружения ===
+# === Токен и настройки ===
 TOKEN = os.getenv("BOT_TOKEN")
 OWNER_LINK = "https://t.me/ermakov_remont"
 ADMIN_ID = 437753009   # твой ID, заявки будут приходить сюда
-
-# === Контекст для пользователей ===
 USER_CONTEXT = {}
 
 # === Функции ===
@@ -48,8 +59,7 @@ def calculate_price(model: str, repair_type: str) -> str:
         return "❌ Не удалось определить модель или разъём."
 
     if repair_type == "экран":
-        base_price = 0
-        total = round_up_to_100(base_price + 3000)
+        total = round_up_to_100(3000)  # + цена детали (можно добавить парсер)
         return f"💡 Замена дисплея для {model}: {total} ₽ (срок 1 день)"
 
     if repair_type == "батарея":
@@ -90,6 +100,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"📞 Напишите нам: {OWNER_LINK}")
         return
 
+    # Модель
     if any(b in text for b in ["iphone", "samsung", "xiaomi", "huawei", "honor", "realme", "oppo", "infinix", "tecno"]):
         if user_id not in USER_CONTEXT:
             USER_CONTEXT[user_id] = {"model": None, "service": None}
@@ -102,6 +113,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"📱 Модель: {update.message.text}\nТеперь укажите услугу (экран, батарея, разъём).")
         return
 
+    # Услуга
     service = None
     if "экран" in text or "дисплей" in text:
         service = "экран"
@@ -124,7 +136,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("⚡ Напишите модель телефона и услугу (например: «замена экрана iPhone 12»).")
 
-# === Обработка inline-кнопок ===
+# === Inline-кнопки ===
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -153,7 +165,6 @@ async def order_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         model = USER_CONTEXT[user_id].get("model")
         service = USER_CONTEXT[user_id].get("service")
 
-        # Формируем карточку заявки
         card = (
             f"🆕 <b>Новая заявка</b>\n\n"
             f"👤 Имя: <b>{name}</b>\n"
@@ -166,7 +177,6 @@ async def order_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [[InlineKeyboardButton("📩 Написать клиенту", url=f"tel:{phone}")]]
         )
 
-        # Отправляем админу
         await context.bot.send_message(
             chat_id=ADMIN_ID, 
             text=card, 
@@ -175,16 +185,19 @@ async def order_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await update.message.reply_text("✅ Спасибо! Ваша заявка принята, мы скоро свяжемся с вами.")
-        USER_CONTEXT[user_id] = {}  # сброс
+        USER_CONTEXT[user_id] = {}
 
 # === Запуск ===
 def main():
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, order_handler))
-    app.run_polling()
+    app_tg = Application.builder().token(TOKEN).build()
+    app_tg.add_handler(CommandHandler("start", start))
+    app_tg.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+    app_tg.add_handler(CallbackQueryHandler(button_handler))
+    app_tg.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, order_handler))
+
+    # Запускаем Flask и Telegram параллельно
+    threading.Thread(target=run_flask).start()
+    app_tg.run_polling()
 
 if __name__ == "__main__":
     main()
