@@ -18,7 +18,7 @@ from telegram.ext import (
     ContextTypes
 )
 
-# === Flask-заглушка для Render ===
+# === Flask-заглушка ===
 app = Flask(__name__)
 
 @app.route("/")
@@ -33,15 +33,13 @@ def run_flask():
 with open("connectors.json", encoding="utf-8") as f:
     CONNECTORS = json.load(f)
 
-# === Токен и настройки ===
-TOKEN = os.getenv("BOT_TOKEN")
+# === Настройки ===
+TOKEN = os.getenv("BOT_TOKEN")  # укажешь на Render
 OWNER_LINK = "https://t.me/ermakov_remont"
-ADMIN_ID = 437753009   # твой ID
-
-# === Контекст пользователей ===
+ADMIN_ID = 437753009
 USER_CONTEXT = {}
 
-# === Синонимы брендов (кириллица → латиница) ===
+# === Синонимы брендов (рус → латиница) ===
 BRAND_SYNONYMS = {
     "самсунг": "samsung",
     "хуавей": "huawei",
@@ -50,8 +48,7 @@ BRAND_SYNONYMS = {
     "ксиаоми": "xiaomi",
     "оппо": "oppo",
     "текно": "tecno",
-    "текно": "tecno",
-    "инфин": "infinix",
+    "инфин": "infinix"
 }
 
 def normalize_brand(text: str) -> str:
@@ -60,7 +57,7 @@ def normalize_brand(text: str) -> str:
             text = text.lower().replace(ru, en)
     return text
 
-# === Функции ===
+# === Расчёт цены ===
 def round_up_to_100(x):
     return int(math.ceil(x / 100.0)) * 100
 
@@ -206,8 +203,6 @@ async def order_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await update.message.reply_text("✅ Спасибо! Ваша заявка принята, мы скоро свяжемся с вами.")
-
-        # ❗️ Сбрасываем только stage
         USER_CONTEXT[user_id]["stage"] = None
 
 # === Запуск ===
