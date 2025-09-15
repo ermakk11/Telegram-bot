@@ -1,6 +1,4 @@
 import os
-import asyncio
-from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -13,11 +11,8 @@ TOKEN = os.environ.get("BOT_TOKEN")
 # 🌍 Render URL
 WEBHOOK_URL = "https://telegram-bot-80zy.onrender.com"
 
-# 🛠 Админ ID (твой)
+# 🛠 Админ ID
 ADMIN_ID = 437753009
-
-# Flask-приложение
-app = Flask(__name__)
 
 # Telegram приложение
 application = Application.builder().token(TOKEN).build()
@@ -27,7 +22,6 @@ user_data = {}
 
 
 # === Хендлеры ===
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Привет! 👋 Я бот сервиса РемПлюс.\n\n"
@@ -74,7 +68,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == "order":
         await query.message.reply_text("✍️ Отлично! Как вас зовут?")
-        # Меняем состояние
         user_data[user_id]["waiting_name"] = True
 
 
@@ -85,12 +78,12 @@ async def name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name = update.message.text
         problem = user_data[user_id].get("problem", "Не указана")
 
-        # Отправляем клиенту подтверждение
+        # Подтверждение клиенту
         await update.message.reply_text(
             f"✅ Спасибо, {name}! Ваша заявка принята. Скоро мы свяжемся с вами."
         )
 
-        # Отправляем администратору карточку клиента
+        # Заявка админу
         await context.bot.send_message(
             chat_id=ADMIN_ID,
             text=(
@@ -102,21 +95,7 @@ async def name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-        # Очищаем данные
         user_data[user_id] = {}
-
-
-# === Webhook обработчик ===
-@app.route(f"/webhook/{TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    application.update_queue.put_nowait(update)
-    return "ok", 200
-
-
-# === Установка webhook ===
-async def set_webhook():
-    await application.bot.set_webhook(f"{WEBHOOK_URL}/webhook/{TOKEN}")
 
 
 def main():
@@ -126,10 +105,14 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     application.add_handler(CallbackQueryHandler(button_handler))
 
-    # Запускаем Flask
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    # Запускаем webhook
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)),
+        url_path=TOKEN,
+        webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
+    )
 
 
 if __name__ == "__main__":
-    asyncio.run(set_webhook())
     main()
