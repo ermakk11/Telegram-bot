@@ -1,130 +1,99 @@
-import os
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler,
-    MessageHandler, filters, ConversationHandler, ContextTypes
-)
+import json
+import math
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-TOKEN = os.getenv("BOT_TOKEN")
+# === Загружаем справочник разъёмов ===
+with open("connectors.json", encoding="utf-8") as f:
+    CONNECTORS = json.load(f)
 
-# твой Telegram ID (куда будут приходить заявки)
-ADMIN_ID = 437753009
+# === Твой токен ===
+TOKEN = "8238890929:AAG3tnUSJc4YY4xyZQJXeRNWEQPUW4rg2VM"
+OWNER_LINK = "https://t.me/ermakov_remont"
 
-# --- Состояния диалога ---
-ASK_NAME, ASK_PHONE, ASK_PROBLEM = range(3)
+# === Правила ценообразования ===
+def round_up_to_100(x):
+    return int(math.ceil(x / 100.0)) * 100
 
-# --- Команда /start ---
+def calculate_price(model: str, repair_type: str) -> str:
+    model_lower = model.lower()
+    connector = None
+    for key, conn in CONNECTORS.items():
+        if key.lower() in model_lower:
+            connector = conn
+            break
+
+    if not connector and "iphone" in model_lower:
+        connector = "Lightning"
+
+    if not connector:
+        return "❌ Не удалось определить модель или разъём."
+
+    if "экран" in repair_type or "дисплей" in repair_type:
+        base_price = 0  # здесь можно подставить цену детали с GreenSpark
+        total = round_up_to_100(base_price + 3000)
+        return f"💡 Замена дисплея для {model}: {total} ₽"
+
+    if "батаре" in repair_type or "аккум" in repair_type:
+        if "iphone" in model_lower:
+            total = round_up_to_100(2500)
+        else:
+            total = round_up_to_100(2000)
+        return f"🔋 Замена аккумулятора для {model}: {total} ₽"
+
+    if "разъем" in repair_type or "заряд" in repair_type or "порт" in repair_type:
+        if connector == "MicroUSB":
+            total = round_up_to_100(1200)
+        elif connector == "Type-C":
+            total = round_up_to_100(2000)
+        else:
+            total = "По запросу"
+        return f"🔌 Замена разъёма ({connector}) для {model}: {total} ₽"
+
+    return f"ℹ️ {model} ({connector}) — уточните, какую услугу рассчитать."
+
+# === Обработчики ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [
-            InlineKeyboardButton("ℹ️ О нас", callback_data="about"),
-            InlineKeyboardButton("❓ Помощь", callback_data="help")
-        ],
-        [
-            InlineKeyboardButton("📞 Связаться", url="https://t.me/ermakov_remont")
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Привет! 👋 Я бот сервиса РемПлюс.\nЗадай вопрос или выбери действие:", reply_markup=reply_markup)
+    keyboard = [["О нас", "Помощь", "Связаться"]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    await update.message.reply_text("Привет! 👋 Я бот сервиса РемПлюс.\nВыберите действие:", reply_markup=reply_markup)
 
-# --- Обработка кнопок ---
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    if query.data == "about":
-        await query.edit_message_text(
-            "📢 Сервис **РемПлюс**\n\n"
-            "🔧 Ремонт смартфонов, планшетов и ноутбуков\n"
-            "📍 Адрес: г. Нижний Тагил, ул. Циолковского, д.39\n"
-            "☎️ Телефон: +7 912 041 21 21\n"
-            "🕙 Работаем ежедневно с 10:00 до 19:00\n\n"
-            "Гарантия качества ✅"
-        )
-    elif query.data == "help":
-        await query.edit_message_text(
-            "🛠 Доступные команды:\n"
-            "/start — открыть меню\n"
-            "/about — информация о РемПлюс\n"
-            "/help — список команд\n\n"
-            "📞 Для связи: +7 912 041 21 21"
-        )
-    elif query.data == "buy":
-        await query.edit_message_text("✍️ Давайте оформим заявку.\nКак вас зовут?")
-        return ASK_NAME
-
-# --- Сбор заявки ---
-async def ask_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["name"] = update.message.text
-    await update.message.reply_text("📱 Укажите ваш номер телефона:")
-    return ASK_PHONE
-
-async def ask_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["phone"] = update.message.text
-    await update.message.reply_text("🔧 Опишите, что случилось с устройством:")
-    return ASK_PROBLEM
-
-async def ask_problem(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["problem"] = update.message.text
-
-    name = context.user_data["name"]
-    phone = context.user_data["phone"]
-    problem = context.user_data["problem"]
-
-    # отправляем админу
-    text = (
-        f"📩 Новая заявка:\n\n"
-        f"👤 Имя: {name}\n"
-        f"📱 Телефон: {phone}\n"
-        f"🔧 Проблема: {problem}"
-    )
-    await context.bot.send_message(chat_id=ADMIN_ID, text=text)
-
-    # подтверждение клиенту
-    await update.message.reply_text("✅ Спасибо! Ваша заявка принята. Мы свяжемся с вами в ближайшее время.")
-
-    return ConversationHandler.END
-
-# --- Отмена заявки ---
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Заявка отменена.")
-    return ConversationHandler.END
-
-# --- FAQ ответы ---
-FAQ = {
-    "экран": "💡 Замена экрана iPhone 12 — от 7000₽, срок 1 день.",
-    "батаре": "🔋 Замена аккумулятора — от 2500₽, срок 1 день.",
-    "вода": "💦 Чистка после попадания жидкости — от 2000₽.",
-    "адрес": "📍 Мы находимся: Нижний Тагил, ул. Циолковского, д.39",
-    "телефон": "☎️ Наш телефон: +7 912 041 21 21",
-    "время": "🕙 Работаем ежедневно с 10:00 до 19:00"
-}
-
-async def faq_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.lower()
-    for key, answer in FAQ.items():
-        if key in text:
-            keyboard = [[InlineKeyboardButton("🛒 Оформить заявку", callback_data="buy")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text(f"{answer}\n\nХотите оформить заявку прямо сейчас?", reply_markup=reply_markup)
-            return
-    await update.message.reply_text("🤔 Я пока не знаю ответа на это. Попробуйте написать про «экран», «батарея», «адрес» или «телефон».")
 
-# --- Запуск ---
-app = Application.builder().token(TOKEN).build()
+    if "о нас" in text:
+        await update.message.reply_text("👨‍🔧 РемПлюс — профессиональный ремонт смартфонов.\nТелефон: +79120412121")
+        return
+    if "помощь" in text:
+        await update.message.reply_text("❓ Вы можете спросить меня о цене ремонта: замена дисплея, аккумулятора, разъёма.")
+        return
+    if "связаться" in text:
+        await update.message.reply_text(f"📞 Напишите нам: {OWNER_LINK}")
+        return
 
-conv_handler = ConversationHandler(
-    entry_points=[CallbackQueryHandler(button_handler, pattern="^buy$")],
-    states={
-        ASK_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_name)],
-        ASK_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_phone)],
-        ASK_PROBLEM: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_problem)],
-    },
-    fallbacks=[CommandHandler("cancel", cancel)]
-)
+    if "замена" in text:
+        if "экран" in text or "дисплей" in text:
+            service = "экран"
+        elif "батаре" in text or "аккум" in text:
+            service = "батарея"
+        elif "разъем" in text or "заряд" in text or "порт" in text:
+            service = "разъем"
+        else:
+            service = "другое"
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CallbackQueryHandler(button_handler))
-app.add_handler(conv_handler)
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, faq_handler))
+        words = update.message.text.split()
+        model = " ".join(words[2:]) if len(words) > 2 else update.message.text
+        price = calculate_price(model, service)
+        await update.message.reply_text(price)
+    else:
+        await update.message.reply_text("⚡ Напишите, что нужно: замена экрана, батареи или разъёма + модель телефона.")
 
-app.run_polling()
+# === Запуск ===
+def main():
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
